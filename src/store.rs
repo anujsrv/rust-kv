@@ -33,16 +33,17 @@ pub struct KvStore {
 }
 
 impl KvStore {
-    pub fn open(file: &Path) -> Result<KvStore> {
-        let _ = fs::create_dir_all(file);
-        let index = load_index(file)?;
+    pub fn open(dir: &Path) -> Result<KvStore> {
+        let _ = fs::create_dir_all(dir);
+        let filename = dir.join("wal.log");
+        let index = load_index(&filename)?;
 
         let writer = BufWriter::new(
             fs::OpenOptions::new()
                 .create(true)
                 .write(true)
                 .append(true)
-                .open(file)?,
+                .open(filename)?,
         );
 
         Ok(KvStore{writer, index})
@@ -65,8 +66,8 @@ impl KvStore {
             return Err(Error::DoesNotExist{key});
         }
 
-        let val = Command::init_rm(key.clone());
-        let serialized = serde_json::to_string(&val).unwrap();
+        let cmd = Command::init_rm(key.clone());
+        let serialized = serde_json::to_string(&cmd).unwrap();
 
         self.index.remove(&key);
 
@@ -78,7 +79,7 @@ impl KvStore {
 
     pub fn get(&self, key: String) -> Result<Option<String>> {
         if !self.index.contains_key(&key) {
-            return Err(Error::DoesNotExist{key});
+            return Ok(None);
         }
         
         Ok(Some(self.index[&key].clone()))
@@ -87,7 +88,10 @@ impl KvStore {
 
 fn load_index(file: &Path) -> Result<HashMap<String, String>> {
     let mut index = HashMap::new();
-    let f = fs::File::open(file)?;
+    let f = match fs::File::open(file) {
+        Ok(f) => f,
+        Err(_) => return Ok(index),
+    };
     let mut reader = BufReader::new(f);
 
     let _  = reader.seek(SeekFrom::Start(0))?;
