@@ -1,0 +1,17 @@
+[package]
+name = "kvs"
+version = "0.1.0"
+edition = "2021"
+authors = ["Anuj Srivastava <anuj.sixstrings@gmail.com>"]
+description = "A key-value store based on principles of bitcask"
+
+[dependencies]
+failure = "0.1.8"
+serde = "1.0.219"
+serde_json = "1.0.140"
+
+[dev-dependencies]
+assert_cmd = "0.11.0"
+predicates = "1.0.0"
+tempfile = "3.0.7"
+walkdir = "2.2.7"
