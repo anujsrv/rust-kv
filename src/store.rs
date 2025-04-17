@@ -5,6 +5,7 @@ use std::fs;
 use std::io::{copy, BufWriter, Write, BufReader, Read, Seek, SeekFrom, Take};
 use serde_json::Deserializer;
 
+// holds the readers and writers impls for the log store
 pub struct Store {
     pub dir: PathBuf,
     pub file_id: u32,
@@ -12,11 +13,14 @@ pub struct Store {
     pub writer: Writer,
 }
 
+// basic wrapper over buffered writer functionality
 pub struct Writer {
     pub writer: BufWriter<fs::File>,
     pub pos: u64,
 }
 
+// basic wrapper over buffered reader functionality
+// additionally, encapsulates a few common read operations
 pub struct Reader {
     pub reader: BufReader<fs::File>,
 }
@@ -46,6 +50,8 @@ impl Store {
         })
     }
 
+    // loads older inactive log files into the given index and adds the corresponding reader to
+    // internal map
     pub fn load_inactive_files(&mut self, index: &mut HashMap<String, EntryOffset>) -> Result<u64> {
         let inactive_file_ids = get_inactive_file_ids(&self.dir)?;
         let mut uncompacted = 0;
@@ -86,6 +92,7 @@ impl Writer {
         })
     }
 
+    // writes the given bytes to the file and returns the new cursor position
     pub fn write(&mut self, b: &[u8]) -> Result<u64> {
         self.writer.write(b)?;
         self.writer.flush()?;
@@ -105,12 +112,15 @@ impl Reader {
         })
     }
 
+    // internal function for reading limited number of bytes from given offset
     fn limit_reader(&mut self, start: u64, end: u64) -> Result<Take<&mut BufReader<fs::File>>> {
         let reader = &mut self.reader;
         reader.seek(SeekFrom::Start(start))?;
         Ok(reader.take(end - start))
     }
 
+    // reads from the given offset and returns a string value if Set command is present at the
+    // offset, otherwise returns None
     pub fn read(&mut self, start: u64, end: u64) -> Result<Option<String>> {
         let reader = self.limit_reader(start, end)?;
 
@@ -121,11 +131,13 @@ impl Reader {
         }
     }
 
+    // reads from the given offset and copies to the given writer instance.
     pub fn read_into(&mut self, start: u64, end: u64, writer: &mut BufWriter<fs::File>) -> Result<u64> {
         let mut reader = self.limit_reader(start, end)?;
         Ok(copy(&mut reader, writer)?)
     }
 
+    // loads index from the corresponding log file and computes and returns the size of uncompacted bytes
     pub fn load_index(&mut self, file_id: u32, index: &mut HashMap::<String, EntryOffset>) -> Result<u64> {
         let reader = &mut self.reader;
         let mut cmd_start = reader.seek(SeekFrom::Start(0))?;
@@ -154,6 +166,7 @@ impl Reader {
     }
 }
 
+// goes through the log directory and returns all old/inactive file ids in a sorted order.
 fn get_inactive_file_ids(dir: &Path) -> Result<Vec<u32>> {
    let filenames = fs::read_dir(dir)?
        .filter_map(|res| res.ok())
