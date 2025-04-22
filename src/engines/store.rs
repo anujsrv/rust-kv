@@ -1,4 +1,5 @@
-use crate::{Result, Entry, EntryOffset};
+use crate::error::Result;
+use crate::entry::{Entry, EntryOffset};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::fs;

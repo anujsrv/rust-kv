@@ -1,5 +1,5 @@
 use failure::Fail;
-use std::io;
+use std::{io, string::FromUtf8Error};
 
 #[derive(Debug, Fail)]
 pub enum Error {
@@ -13,6 +13,15 @@ pub enum Error {
     DoesNotExist {
         key: String
     },
+
+    #[fail(display = "{}", _0)]
+    UnhandledError(String),
+
+    #[fail(display = "sled error: {}", _0)]
+    Sled(#[cause] sled::Error),
+
+    #[fail(display = "UTF-8 error: {}", _0)]
+    Utf8(#[cause] FromUtf8Error),
 }
 
 impl From<io::Error> for Error {
@@ -24,6 +33,18 @@ impl From<io::Error> for Error {
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Error {
         Error::Serde(err)
+    }
+}
+
+impl From<sled::Error> for Error {
+    fn from(err: sled::Error) -> Error {
+        Error::Sled(err)
+    }
+}
+
+impl From<FromUtf8Error> for Error {
+    fn from(err: FromUtf8Error) -> Error {
+        Error::Utf8(err)
     }
 }
 

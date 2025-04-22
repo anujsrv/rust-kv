@@ -1,9 +1,11 @@
-pub use kvs::KvStore;
-pub use store::{Store, Writer, Reader};
 pub use error::{Error, Result};
-pub use entry::{Entry, EntryOffset};
+pub use client::KvsClient;
+pub use server::KvsServer;
+pub use engines::{KvsEngine, KvStore, SledKvsEngine};
 
 mod error;
-mod kvs;
 mod entry;
-mod store;
+mod resource;
+mod client;
+mod server;
+mod engines;
