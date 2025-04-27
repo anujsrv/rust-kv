@@ -34,7 +34,6 @@ struct Opt {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum Engine {
     kvs,
-    sled,
 }
 
 impl FromStr for Engine {
@@ -43,7 +42,6 @@ impl FromStr for Engine {
     fn from_str(s: &str) -> Result<Self> {
         match s {
             "kvs" => Ok(Engine::kvs),
-            "sled" => Ok(Engine::sled),
             _ => Err(Error::UnhandledError(format!("Invalid engine type: {}", s))),
         }
     }
@@ -79,12 +77,12 @@ fn run(opt: Opt) -> Result<()> {
 
     match engine {
         Engine::kvs => run_with_engine(KvStore::open(&current_dir()?)?, opt.addr),
-        Engine::sled => run_with_engine(SledKvsEngine::new(sled::open(current_dir()?)?), opt.addr),
     }
 }
 
 fn run_with_engine<E: KvsEngine>(engine: E, addr: SocketAddr) -> Result<()> {
-    let mut server = KvsServer::new(engine);
+    let pool = ThreadPool::new(10);
+    let server = KvsServer::new(engine, pool);
     server.run(addr)
 }
 

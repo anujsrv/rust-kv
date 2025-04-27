@@ -5,10 +5,16 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::io::Write;
+use std::sync::{Arc, Mutex};
 
 const COMPACTION_THRESHOLD: u64 = 1024 * 1024;
 
-pub struct KvStore {
+
+#[derive(Clone)]
+pub struct KvStore(Arc<Mutex<SharedKvStore>>);
+
+#[derive(Clone)]
+pub struct SharedKvStore {
     store: store::Store,
     index: HashMap<String, EntryOffset>,
     dir: PathBuf,
@@ -25,76 +31,83 @@ impl KvStore {
 
         let uncompacted = store.load_inactive_files(&mut index)?;
 
-        Ok(KvStore{
+        Ok(KvStore(Arc::new(Mutex::new(SharedKvStore{
             store,
             index,
             dir: dir.to_path_buf(),
             curr_file_id,
             uncompacted,
-        })
+        }))))
     }
     // check existing keys in index against the corresponding file
     // copy the log entry to a new file
     // remove the inactive files from the dir as well as store hashmap
     pub fn compact(&mut self) -> Result<()> {
         // compaction output file
-        let compaction_file_id = self.curr_file_id + 1;
-        let new_filename = store::log_file_name(&self.dir, compaction_file_id);
-        let mut w = store::Writer::new(&new_filename)?;
-        self.store.readers.insert(compaction_file_id, store::Reader::new(&new_filename)?);
+        let store_arc = Arc::clone(&self.0);
+        let mut shared_store = store_arc.lock().unwrap();
+        let compaction_file_id = shared_store.curr_file_id + 1;
+        let new_filename = store::log_file_name(&shared_store.dir, compaction_file_id);
+        let w = store::Writer::new(&new_filename)?;
+        shared_store.store.readers.insert(compaction_file_id, store::Reader::new(&new_filename)?);
 
         let mut pos = 0;
-        for offset in self.index.values_mut() {
-            let reader = self.store.readers.get_mut(&offset.file_id).unwrap_or_else(|| panic!("no reader for file_id: {}", offset.file_id));
-            let len = reader.read_into(offset.start, offset.end, &mut w.writer)?;
+        let mut writer = w.writer.lock().unwrap();
+        for offset in shared_store.clone().index.values_mut() {
+            let reader = shared_store.store.readers.get_mut(&offset.file_id).unwrap_or_else(|| panic!("no reader for file_id: {}", offset.file_id));
+            let len = reader.read_into(offset.start, offset.end, &mut writer)?;
             *offset = EntryOffset{file_id: compaction_file_id, start: pos, end: pos + len};
             pos += len;
         }
-        w.writer.flush()?;
+        writer.flush()?;
 
-        let stale_file_ids = self.store.readers.keys()
+        let stale_file_ids = shared_store.store.readers.keys()
             .filter(|&file_id| file_id < &compaction_file_id)
             .map(|file_id| file_id.clone())
             .collect::<Vec<_>>();
 
         for file_id in stale_file_ids {
-            self.store.readers.remove(&file_id);
-            fs::remove_file(store::log_file_name(&self.dir, file_id))?;
+            shared_store.store.readers.remove(&file_id);
+            fs::remove_file(store::log_file_name(&shared_store.dir, file_id))?;
         }
 
-        self.curr_file_id = compaction_file_id + 1;
-        let new_filename = store::log_file_name(&self.dir, self.curr_file_id);
-        self.store.writer = store::Writer::new(&new_filename)?;
-        self.store.readers.insert(self.curr_file_id, store::Reader::new(&new_filename)?);
+        shared_store.curr_file_id = compaction_file_id + 1;
+        let new_filename = store::log_file_name(&shared_store.dir, shared_store.curr_file_id);
+        shared_store.store.writer = store::Writer::new(&new_filename)?;
+        shared_store.store.readers.insert(compaction_file_id + 1, store::Reader::new(&new_filename)?);
 
-        self.uncompacted = 0;
+        shared_store.uncompacted = 0;
 
         Ok(())
     }
 }
 
 impl KvsEngine for KvStore {
-    fn set(&mut self, key: String, val: String) -> Result<()> {
+    fn set(&self, key: String, val: String) -> Result<()> {
         let cmd = Entry::init_set(key.clone(), val.clone());
         let serialized = serde_json::to_string(&cmd).unwrap();
         let b = serialized.as_bytes();
-        let pos = self.store.writer.pos;
+        let store_arc = Arc::clone(&self.0);
+        let mut shared_store = store_arc.lock().unwrap();
+        let pos = shared_store.store.writer.pos;
 
-        let end_pos = self.store.write(b)?;
+        let end_pos = shared_store.store.write(b)?;
 
-        if let Some(old_val) = self.index.insert(key, EntryOffset{file_id: self.curr_file_id, start: pos, end: end_pos}) {
-            self.uncompacted += old_val.end - old_val.start;
+        if let Some(old_val) = shared_store.clone().index.insert(key, EntryOffset{file_id: shared_store.clone().curr_file_id, start: pos, end: end_pos}) {
+            shared_store.uncompacted += old_val.end - old_val.start;
         }
 
-        if self.uncompacted > COMPACTION_THRESHOLD {
-            self.compact()?
+        if shared_store.uncompacted > COMPACTION_THRESHOLD {
+            // self.compact()?
         }
 
         Ok(())
     }
 
-    fn remove(&mut self, key: String) -> Result<String> {
-        if !self.index.contains_key(&key) {
+    fn remove(&self, key: String) -> Result<String> {
+        let store_arc = Arc::clone(&self.0);
+        let mut shared_store = store_arc.lock().unwrap();
+        if !shared_store.index.contains_key(&key) {
             return Err(Error::DoesNotExist{key});
         }
 
@@ -102,21 +115,23 @@ impl KvsEngine for KvStore {
         let serialized = serde_json::to_string(&cmd).unwrap();
         let b = serialized.as_bytes();
 
-        self.store.write(b)?;
+        shared_store.store.write(b)?;
 
-        if let Some(old_val) = self.index.remove(&key) {
-            self.uncompacted += old_val.end - old_val.start;
+        if let Some(old_val) = shared_store.index.remove(&key) {
+            shared_store.uncompacted += old_val.end - old_val.start;
         }
 
         Ok(key)
     }
 
-    fn get(&mut self, key: String) -> Result<Option<String>> {
-        if !self.index.contains_key(&key) {
+    fn get(&self, key: String) -> Result<Option<String>> {
+        let store_arc = Arc::clone(&self.0);
+        let mut shared_store = store_arc.lock().unwrap();
+        if !shared_store.index.contains_key(&key) {
             return Ok(None);
         }
         
-        let offset = self.index[&key].clone();
-        Ok(self.store.read(offset.file_id, offset.start, offset.end)?)
+        let offset = shared_store.index[&key].clone();
+        Ok(shared_store.store.read(offset.file_id, offset.start, offset.end)?)
     }
 }

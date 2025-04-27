@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::io::{copy, BufWriter, Write, BufReader, Read, Seek, SeekFrom, Take};
+use std::sync::{Arc, Mutex};
 use serde_json::Deserializer;
 
 // holds the readers and writers impls for the log store
@@ -16,7 +17,7 @@ pub struct Store {
 
 // basic wrapper over buffered writer functionality
 pub struct Writer {
-    pub writer: BufWriter<fs::File>,
+    pub writer: Arc<Mutex<BufWriter<fs::File>>>,
     pub pos: u64,
 }
 
@@ -77,6 +78,12 @@ impl Store {
 
 }
 
+impl Clone for Store {
+    fn clone(&self) -> Self {
+        Self { dir: self.dir.clone(), file_id: self.file_id.clone(), readers: self.readers.clone(), writer: self.writer.clone() }
+    }
+}
+
 impl Writer {
     pub fn new(file: &Path) -> Result<Writer> {
         let writer = BufWriter::new(
@@ -89,24 +96,31 @@ impl Writer {
         
         Ok(Writer{
             pos: 0,
-            writer,
+            writer: Arc::new(Mutex::new(writer)),
         })
     }
 
     // writes the given bytes to the file and returns the new cursor position
     pub fn write(&mut self, b: &[u8]) -> Result<u64> {
-        self.writer.write(b)?;
-        self.writer.flush()?;
+        let mut writer = self.writer.lock().unwrap();
+        writer.write(b)?;
+        writer.flush()?;
         self.pos += b.len() as u64;
 
         Ok(self.pos)
     }
 }
 
+impl Clone for Writer {
+    fn clone(&self) -> Self {
+        Self { writer: self.writer.clone(), pos: self.pos.clone() }
+    }
+}
+
 impl Reader {
     pub fn new(file: &Path) -> Result<Reader> {
         let f = fs::File::open(&file)?;
-        let reader = BufReader::new(f);
+        let reader = BufReader::new(f.try_clone()?);
 
         Ok(Reader{
             reader,
@@ -114,7 +128,7 @@ impl Reader {
     }
 
     // internal function for reading limited number of bytes from given offset
-    fn limit_reader(&mut self, start: u64, end: u64) -> Result<Take<&mut BufReader<fs::File>>> {
+    fn read_limited(&mut self, start: u64, end: u64) -> Result<Take<&mut BufReader<fs::File>>> {
         let reader = &mut self.reader;
         reader.seek(SeekFrom::Start(start))?;
         Ok(reader.take(end - start))
@@ -123,7 +137,7 @@ impl Reader {
     // reads from the given offset and returns a string value if Set command is present at the
     // offset, otherwise returns None
     pub fn read(&mut self, start: u64, end: u64) -> Result<Option<String>> {
-        let reader = self.limit_reader(start, end)?;
+        let reader = self.read_limited(start, end)?;
 
         if let Entry::Set{val, ..} = serde_json::from_reader(reader)? {
             Ok(Some(val))
@@ -134,7 +148,7 @@ impl Reader {
 
     // reads from the given offset and copies to the given writer instance.
     pub fn read_into(&mut self, start: u64, end: u64, writer: &mut BufWriter<fs::File>) -> Result<u64> {
-        let mut reader = self.limit_reader(start, end)?;
+        let mut reader = self.read_limited(start, end)?;
         Ok(copy(&mut reader, writer)?)
     }
 
@@ -164,6 +178,13 @@ impl Reader {
         }
 
         Ok(uncompacted)
+    }
+}
+
+impl Clone for Reader {
+    fn clone(&self) -> Self {
+        let cloned_file = self.reader.get_ref().try_clone().unwrap();
+        Self { reader: BufReader::new(cloned_file) }
     }
 }
 
