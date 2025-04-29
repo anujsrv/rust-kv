@@ -6,7 +6,7 @@ pub enum Entry {
     Rm {key: String},
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct EntryOffset {
     pub file_id: u32,
     pub start: u64,

@@ -4,7 +4,6 @@ use std::net::SocketAddr;
 use std::process::exit;
 
 const DEFAULT_LISTENING_ADDRESS: &str = "127.0.0.1:4000";
-const ADDRESS_FORMAT: &str = "IP:PORT";
 
 #[derive(Parser, Debug)]
 #[clap(disable_help_flag = true)]

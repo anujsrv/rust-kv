@@ -92,8 +92,9 @@ impl KvsEngine for KvStore {
         let pos = shared_store.store.writer.pos;
 
         let end_pos = shared_store.store.write(b)?;
+        let curr_file_id = shared_store.curr_file_id;
 
-        if let Some(old_val) = shared_store.clone().index.insert(key, EntryOffset{file_id: shared_store.clone().curr_file_id, start: pos, end: end_pos}) {
+        if let Some(old_val) = shared_store.index.insert(key, EntryOffset{file_id: curr_file_id, start: pos, end: end_pos}) {
             shared_store.uncompacted += old_val.end - old_val.start;
         }
 

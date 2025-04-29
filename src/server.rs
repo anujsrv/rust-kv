@@ -2,6 +2,7 @@ use crate::{Result, Error, KvsEngine, ThreadPool};
 use crate::resource::{Request, Response};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::io::{Write, BufReader};
+use log::info;
 use serde_json::Deserializer;
 
 pub struct KvsServer<E: KvsEngine> {
@@ -44,7 +45,7 @@ fn handle_client<E: KvsEngine>(engine: E, stream: TcpStream) -> Result<()> {
                     Err(_) => Response::Err(Error::DoesNotExist{key}.to_string()),
                 };
                 let b = serde_json::to_string(&resp).unwrap();
-                writer.write(b.as_bytes())?;
+                writer.write_all(b.as_bytes())?;
                 writer.flush()?;
             },
             Request::Set{key, val} => {
@@ -53,7 +54,7 @@ fn handle_client<E: KvsEngine>(engine: E, stream: TcpStream) -> Result<()> {
                     Err(err) => Response::Err(err.to_string()),
                 };
                 let b = serde_json::to_string(&resp).unwrap();
-                writer.write(b.as_bytes())?;
+                writer.write_all(b.as_bytes())?;
                 writer.flush()?;
             },
             Request::Rm{key} => {
@@ -62,7 +63,7 @@ fn handle_client<E: KvsEngine>(engine: E, stream: TcpStream) -> Result<()> {
                     Err(err) => Response::Err(err.to_string()),
                 };
                 let b = serde_json::to_string(&resp).unwrap();
-                writer.write(b.as_bytes())?;
+                writer.write_all(b.as_bytes())?;
                 writer.flush()?;
             },
         }
