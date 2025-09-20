@@ -20,33 +20,33 @@ impl KvsClient {
         })
     }
     pub fn get(&mut self, key: String) -> Result<Option<String>> {
-        let payload = serde_json::to_string(&Request::Get{key})?;
+        let payload = serde_json::to_string(&Request::<String, String>::Get{key})?;
         let b = payload.as_bytes();
         self.request_stream.write_all(b)?;
         self.request_stream.flush()?;
-        let response = Response::deserialize(&mut self.response_stream)?;
+        let response = Response::<String>::deserialize(&mut self.response_stream)?;
         match response {
             Response::Ok(val) => Ok(val),
             Response::Err(err) => Err(Error::UnhandledError(err)),
         }
     }
     pub fn remove(&mut self, key: String) -> Result<()> {
-        let payload = serde_json::to_string(&Request::Rm{key})?;
+        let payload = serde_json::to_string(&Request::<String, String>::Rm{key})?;
         let b = payload.as_bytes();
         self.request_stream.write_all(b)?;
         self.request_stream.flush()?;
-        let response = Response::deserialize(&mut self.response_stream)?;
+        let response = Response::<String>::deserialize(&mut self.response_stream)?;
         match response {
             Response::Ok(_) => Ok(()),
             Response::Err(err) => Err(Error::UnhandledError(err)),
         }
     }
     pub fn set(&mut self, key: String, value: String) -> Result<()> {
-        let payload = serde_json::to_string(&Request::Set{key, val: value})?;
+        let payload = serde_json::to_string(&Request::<String, String>::Set{key, val: value})?;
         let b = payload.as_bytes();
         self.request_stream.write_all(b)?;
         self.request_stream.flush()?;
-        let response = Response::deserialize(&mut self.response_stream)?;
+        let response = Response::<String>::deserialize(&mut self.response_stream)?;
         match response {
             Response::Ok(_) => Ok(()),
             Response::Err(err) => Err(Error::UnhandledError(err)),

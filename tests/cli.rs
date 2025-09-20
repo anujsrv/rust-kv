@@ -232,7 +232,7 @@ fn cli_access_server(engine: &str, addr: &str) {
         .current_dir(&temp_dir)
         .assert()
         .failure()
-        .stderr(contains("key: key2 does not exist"));
+        .stderr(contains("key: \"key2\" does not exist"));
 
     Command::cargo_bin("kvs-client")
         .unwrap()

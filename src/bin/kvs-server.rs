@@ -80,9 +80,9 @@ fn run(opt: Opt) -> Result<()> {
     }
 }
 
-fn run_with_engine<E: KvsEngine>(engine: E, addr: SocketAddr) -> Result<()> {
+fn run_with_engine<E: KvsEngine<String, String>>(engine: E, addr: SocketAddr) -> Result<()> {
     let pool = ThreadPool::new(10);
-    let server = KvsServer::new(engine, pool);
+    let server = KvsServer::<String, String, E>::new(engine, pool);
     server.run(addr)
 }
 
