@@ -7,7 +7,7 @@ A minimal multi-threaded key-value store in Rust based on the [Bitcask](https://
 
 # Architecture:
 
-A minimal, multi-threaded, networked key-value store in Rust, modeled after the [Bitcask](https://en.wikipedia.org/wiki/Bitcask) storage design. This document covers every major component: the on-disk log format, the WAL lifecycle, the in-memory index, compaction, multi-threading, client-server networking, and how Rust's type system is leveraged throughout.
+This section covers every major component: the on-disk log format, the WAL lifecycle, the in-memory index, compaction, multi-threading, client-server networking, and how Rust's type system is leveraged throughout.
 
 ---
 
